@@ -1,8 +1,6 @@
-"""All settings of the analysis: inputs, method parameters and decisions.
+"""Inputs, method parameters and decisions for the 2019 Red River flood analysis.
 
-Each value says where it comes from. If a decision changes, change it here and
-re-run the notebooks after the one that made it (notebook 01 checks its
-decisions against its own tables).
+Decisions are checked against the scene tables at the end of notebook 01.
 """
 from enum import Enum
 from pathlib import Path
@@ -41,7 +39,7 @@ WORLDCOVER_NAMES = {
     60: "Bare / sparse vegetation", 70: "Snow and ice", 80: "Permanent water bodies",
     90: "Herbaceous wetland", 95: "Mangroves", 100: "Moss and lichen",
 }
-# Official WorldCover colours (catalog page), so our maps look like the dataset's own.
+# WorldCover palette (catalog page).
 WORLDCOVER_COLORS = {
     10: "#006400", 20: "#ffbb22", 30: "#ffff4c", 40: "#f096ff", 50: "#fa0000",
     60: "#b4b4b4", 70: "#f0f0f0", 80: "#0064c8", 90: "#0096a0", 95: "#00cf75", 100: "#fae6a0",
@@ -68,21 +66,21 @@ REF_WINDOW_SUMMER = ("2019-06-01", "2019-08-31")
 MNDWI_THRESHOLD = 0.0             # Xu (2006); Otsu on the 22 Apr image gives 0.059 (notebook 02)
 SAR_RATIO_THRESHOLD = 1.25        # UN-SPIDER recommended practice
 PERMANENT_WATER_OCCURRENCE = 80   # % of time water in JRC GSW -> treated as permanent water
-MAX_SLOPE_DEG = 5                 # UN-SPIDER: floods don't stay on steeper slopes
+MAX_SLOPE_DEG = 5                 # UN-SPIDER recommended practice
 
 
 # --- Decisions ---------------------------------------------------------------
-# From notebook 01: the only clear Landsat 8 flood image is path 31 on 22 Apr.
+# Notebook 01: only clear Landsat 8 flood image is path 31, 22 Apr.
 STUDY_AOI = "grandforks_pembina"  # cut to the Landsat footprint, see common.study_area()
 L8_PATH = 31
 L8_DURING = "2019-04-22"
 L8_BEFORE = "2018-09-10"  # 12 Oct 2018 was snow-covered (notebook 02)
 L8_AFTER = "2019-08-28"
 
-# From notebook 01: Sentinel-1 orbit 136 images the area on the same day as Landsat 8.
+# Notebook 01: Sentinel-1 orbit 136 on the same day as Landsat 8.
 S1_ORBIT = 136
 S1_DURING = "2019-04-22"
 S1_AFTER = "2019-08-20"
 S1_TIMELINE = [S1_DURING, "2019-05-04", "2019-05-16", S1_AFTER]  # all orbit-136 dates we map
-# From notebook 03: median over late spring 2018 (no snow, no flood, small crops).
+# Notebook 03: late-spring 2018 median (snow-free, no flood, small crops).
 S1_BEFORE_WINDOW = ("2018-05-09", "2018-06-03")

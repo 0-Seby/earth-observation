@@ -47,8 +47,7 @@ def find_images(sensor: cfg.Sensor, aoi: ee.Geometry, window: tuple[str, str]) -
     """All images of `sensor` that touch `aoi` within `window`."""
     images = ee.ImageCollection(sensor.collection_id).filterBounds(aoi).filterDate(*window)
     if sensor is cfg.Sensor.S1:
-        # IW (Interferometric Wide swath) is the standard Sentinel-1 mode over land;
-        # we need both VV and VH polarisations.
+        # IW mode, dual polarisation
         images = images.filter(ee.Filter.And(
             ee.Filter.eq("instrumentMode", "IW"),
             ee.Filter.listContains("transmitterReceiverPolarisation", "VV"),
@@ -150,8 +149,7 @@ def optical_flood(day: str, aoi: ee.Geometry) -> ee.Image:
 def sentinel1_vh_median(window: tuple[str, str], aoi: ee.Geometry) -> ee.Image:
     """Median VH backscatter (dB) of the cfg.S1_ORBIT images in `window`, speckle-filtered.
 
-    For a single day (`one_day(...)`) the median just joins that day's frames.
-    Speckle filter as in the UN-SPIDER recommended practice: mean over a 50 m circle.
+    For a single day the median just mosaics that day's frames. Speckle filter: 50 m focal mean.
     """
     images = find_images(cfg.Sensor.S1, get_aoi(), window)
     images = images.filter(ee.Filter.eq("relativeOrbitNumber_start", cfg.S1_ORBIT)).select("VH")
@@ -159,10 +157,8 @@ def sentinel1_vh_median(window: tuple[str, str], aoi: ee.Geometry) -> ee.Image:
 
 
 def sar_flood(during: ee.Image, before: ee.Image) -> ee.Image:
-    """1 where the VH backscatter got darker by SAR_RATIO_THRESHOLD, without permanent water and slopes.
-
-    The dB values are negative, so during / before > 1 means darker (UN-SPIDER recommended practice).
-    """
+    """Change-detection flood mask: during/before ratio of the dB values above SAR_RATIO_THRESHOLD
+    (darker), without permanent water and steep slopes (UN-SPIDER recommended practice)."""
     ratio = during.divide(before)
     slope = ee.Terrain.slope(ee.Image(cfg.DEM))
     flood = ratio.gt(cfg.SAR_RATIO_THRESHOLD)
@@ -215,11 +211,7 @@ def histogram(image: ee.Image, aoi: ee.Geometry, scale: int = 30) -> tuple[np.nd
 
 
 def otsu(values: np.ndarray, counts: np.ndarray) -> float:
-    """Otsu threshold: the split that best separates the histogram into two classes.
-
-    For every possible split it compares the two class means, weighted by
-    class size (between-class variance), and keeps the best split.
-    """
+    """Otsu threshold: histogram split with the largest between-class variance."""
     best_score, best_threshold = -1.0, float(values[0])
     for i in range(1, len(values)):
         n_low, n_high = counts[:i].sum(), counts[i:].sum()
@@ -233,7 +225,7 @@ def otsu(values: np.ndarray, counts: np.ndarray) -> float:
     return best_threshold
 
 
-# --- Static maps for the report ---------------------------------------------
+# --- Static maps -------------------------------------------------------------
 def outline(geometry: ee.Geometry, color: str = "red", width: int = 2) -> ee.Image:
     """The border of `geometry` as an RGB image, to put on top of other layers."""
     border = ee.Image().byte().paint(ee.FeatureCollection(geometry), 1, width)
@@ -261,7 +253,7 @@ def plot_map(ax: Axes, image: ee.Image, region: ee.Geometry, title: str, width: 
     """Draw a visualised Earth Engine image on a matplotlib axis with lon/lat axes."""
     array, extent = download_rgb(image, region, width)
     ax.imshow(array, extent=extent)
-    # One degree of longitude is shorter than one of latitude: correct the aspect ratio.
+    # equal distances in x and y at the mid latitude
     mid_lat = (extent[2] + extent[3]) / 2
     ax.set_aspect(1 / math.cos(math.radians(mid_lat)))
     ax.set_title(title, fontsize=10)
