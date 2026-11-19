@@ -25,7 +25,7 @@
 - Open question: the brief asks for "GEE script links". We use Python notebooks, so we probably link the repo / notebooks instead. Check with the course.
 
 ## Decisions (done in notebook 01)
-- **AOI / study area:** the `grandforks_pembina` box cut to the Landsat 8 footprint of 22 Apr (`c.study_area()`, about 4,250 km², Oslo MN ~48.2° N to the Canadian border). Landsat on 22 Apr covers only 0.8 % of the Fargo box, so that box was dropped.
+- **AOI / study area:** the `grandforks_pembina` box cut to the Landsat 8 footprint of 22 Apr (`c.study_area()`, about 4,240 km², Oslo MN ~48.2° N to the Canadian border). Landsat on 22 Apr covers only 0.8 % of the Fargo box, so that box was dropped.
 - **Dates:**
 
   |        | Landsat 8 (path 31) | Sentinel-1 (orbit 136, ascending) |

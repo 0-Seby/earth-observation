@@ -190,6 +190,14 @@ def permanent_water() -> ee.Image:
     return occurrence.gte(PERMANENT_WATER_OCCURRENCE)
 
 
+def geometry_km2(geometry: ee.Geometry) -> float:
+    """Area of a polygon in km²."""
+    area_m2 = geometry.area(maxError=1).getInfo()
+    if area_m2 is None:
+        raise RuntimeError("Earth Engine returned no result.")
+    return area_m2 / 1e6
+
+
 def area_km2(mask: ee.Image, aoi: ee.Geometry, scale: int = 30) -> float:
     """Area in km² of the pixels where `mask` is 1."""
     pixel_km2 = ee.Image.pixelArea().divide(1e6).updateMask(mask)
