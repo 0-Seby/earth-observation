@@ -1,83 +1,34 @@
-"""Shared settings and helpers for the 2019 Red River flood notebooks.
+"""Helper functions for the 2019 Red River flood notebooks.
 
-Every notebook does `import common as c` so all steps use the same dates,
-AOIs, datasets and thresholds.
+All settings (dates, thresholds, datasets, decisions) live in config.py.
 """
+import io
+import math
 import os
-from enum import Enum
-from pathlib import Path
+import urllib.request
+from datetime import date, timedelta
 from typing import Any
 
 import ee
 import geemap
 import ipyleaflet
+import matplotlib.image
 import numpy as np
+from matplotlib.axes import Axes
+from matplotlib.patches import Patch
 import pandas as pd
 from dotenv import load_dotenv
 
-ROOT = Path(__file__).resolve().parents[1]
-FIGURES = ROOT / "outputs" / "figures"
-TABLES = ROOT / "outputs" / "tables"
-
-# --- Dates (windows are [start, end) as Earth Engine expects) ---------------
-FARGO_CREST = "2019-04-08"
-GRAND_FORKS_CREST = "2019-04-11"
-FLOOD_WINDOW = ("2019-04-12", "2019-05-10")
-REF_WINDOW_AUTUMN = ("2018-09-01", "2018-10-31")
-REF_WINDOW_SUMMER = ("2019-06-01", "2019-08-31")
-
-# --- Areas of interest: [lon_min, lat_min, lon_max, lat_max] ----------------
-AOI_BOXES = {
-    "fargo_grandforks": [-97.25, 46.80, -96.60, 47.98],
-    "grandforks_pembina": [-97.45, 47.85, -96.85, 49.00],
-}
+import config as cfg
 
 
-def get_aoi(name: str = "grandforks_pembina") -> ee.Geometry:
-    return ee.Geometry.Rectangle(AOI_BOXES[name])
-
-
-# --- Sensors -----------------------------------------------------------------
-class Sensor(Enum):
-    """Satellite collections and the image properties we read from them.
-
-    Property names come from the "Image Properties" tab of each dataset in the
-    Earth Engine catalog (https://developers.google.com/earth-engine/datasets).
-    Sentinel-1 is radar, so it has no cloud cover.
-    """
-
-    #    collection id                  orbit property               cloud property
-    L8 = ("LANDSAT/LC08/C02/T1_L2",      "WRS_PATH",                  "CLOUD_COVER")
-    S2 = ("COPERNICUS/S2_SR_HARMONIZED", "SENSING_ORBIT_NUMBER",      "CLOUDY_PIXEL_PERCENTAGE")
-    S1 = ("COPERNICUS/S1_GRD",           "relativeOrbitNumber_start", None)
-
-    def __init__(self, collection_id: str, orbit_property: str, cloud_property: str | None) -> None:
-        self.collection_id = collection_id
-        self.orbit_property = orbit_property
-        self.cloud_property = cloud_property
-
-
-# --- Chosen scenes (see notebook 01) -----------------------------------------
-L8_PATH = 31
-L8_DATES = {"before": "2018-09-10", "during": "2019-04-22", "after": "2019-08-28"}
-S1_ORBIT = 136
-S1_DATES = {"before": "2018-09-06", "during": "2019-04-22", "after": "2019-08-20"}
-
-# --- Other datasets ----------------------------------------------------------
-JRC_GSW = "JRC/GSW1_4/GlobalSurfaceWater"
-WORLDCOVER = "ESA/WorldCover/v100"  # 2020, 10 m
-DEM = "USGS/SRTMGL1_003"
-
-# --- Method parameters (to be justified in the report) ---------------------
-MNDWI_THRESHOLD = 0.0  # Otsu on the 22 Apr image gives 0.059, see notebook 02
-SAR_RATIO_THRESHOLD = 1.25
-PERMANENT_WATER_OCCURRENCE = 80  # % occurrence in JRC GSW treated as permanent water
-MAX_SLOPE_DEG = 5
+def get_aoi(name: str = cfg.STUDY_AOI) -> ee.Geometry:
+    return ee.Geometry.Rectangle(cfg.AOI_BOXES[name])
 
 
 def init() -> None:
     """Initialise Earth Engine with the Cloud project from .env (EE_PROJECT)."""
-    load_dotenv(ROOT / ".env")
+    load_dotenv(cfg.ROOT / ".env")
     project = os.getenv("EE_PROJECT")
     if not project or project == "your-gcp-project-id":
         raise RuntimeError("Set EE_PROJECT in .env (copy .env.example).")
@@ -92,10 +43,10 @@ def init() -> None:
         ee.Initialize(project=project)
 
 
-def find_images(sensor: Sensor, aoi: ee.Geometry, window: tuple[str, str]) -> ee.ImageCollection:
+def find_images(sensor: cfg.Sensor, aoi: ee.Geometry, window: tuple[str, str]) -> ee.ImageCollection:
     """All images of `sensor` that touch `aoi` within `window`."""
     images = ee.ImageCollection(sensor.collection_id).filterBounds(aoi).filterDate(*window)
-    if sensor is Sensor.S1:
+    if sensor is cfg.Sensor.S1:
         # IW (Interferometric Wide swath) is the standard Sentinel-1 mode over land;
         # we need both VV and VH polarisations.
         images = images.filter(ee.Filter.And(
@@ -106,7 +57,7 @@ def find_images(sensor: Sensor, aoi: ee.Geometry, window: tuple[str, str]) -> ee
     return images
 
 
-def scenes_per_day(sensor: Sensor, aoi: ee.Geometry, window: tuple[str, str]) -> pd.DataFrame:
+def scenes_per_day(sensor: cfg.Sensor, aoi: ee.Geometry, window: tuple[str, str]) -> pd.DataFrame:
     """One row per acquisition day: orbit, image count, AOI coverage and scene cloud cover.
 
     One overpass is split into several images (Landsat rows, S2 tiles, S1
@@ -148,21 +99,22 @@ def scenes_per_day(sensor: Sensor, aoi: ee.Geometry, window: tuple[str, str]) ->
     return table.loc[:, columns].sort_values(by="date").round(1).reset_index(drop=True)
 
 
+def one_day(day: str) -> tuple[str, str]:
+    """Date window covering only `day`, e.g. ("2019-04-22", "2019-04-23")."""
+    next_day = date.fromisoformat(day) + timedelta(days=1)
+    return day, next_day.isoformat()
+
+
 def landsat8_day(day: str) -> ee.ImageCollection:
-    """Landsat 8 images of path L8_PATH over the valley on `day` (one per WRS row)."""
-    start = ee.Date(day)
-    return (
-        ee.ImageCollection(Sensor.L8.collection_id)
-        .filterBounds(get_aoi("grandforks_pembina"))
-        .filterDate(start, start.advance(1, "day"))
-        .filter(ee.Filter.eq("WRS_PATH", L8_PATH))
-    )
+    """Landsat 8 images of path cfg.L8_PATH over the valley on `day` (one per WRS row)."""
+    images = find_images(cfg.Sensor.L8, get_aoi(), one_day(day))
+    return images.filter(ee.Filter.eq("WRS_PATH", cfg.L8_PATH))
 
 
 def study_area() -> ee.Geometry:
-    """The grandforks_pembina box, cut to the Landsat 8 footprint on the flood date."""
-    footprint = landsat8_day(L8_DATES["during"]).geometry().dissolve(maxError=100)
-    return footprint.intersection(get_aoi("grandforks_pembina"), maxError=100)
+    """The STUDY_AOI box, cut to the Landsat 8 footprint on the flood date."""
+    footprint = landsat8_day(cfg.L8_DURING).geometry().dissolve(maxError=100)
+    return footprint.intersection(get_aoi(), maxError=100)
 
 
 # QA_PIXEL bits (see band QA_PIXEL in the catalog): 1 dilated cloud, 3 cloud,
@@ -184,10 +136,43 @@ def mndwi(image: ee.Image) -> ee.Image:
     return image.normalizedDifference(["SR_B3", "SR_B6"]).rename("mndwi")
 
 
+def optical_water(day: str, aoi: ee.Geometry) -> ee.Image:
+    """1 where the Landsat 8 MNDWI on `day` is above cfg.MNDWI_THRESHOLD."""
+    return mndwi(landsat8_image(day, aoi)).gt(cfg.MNDWI_THRESHOLD)
+
+
+def optical_flood(day: str, aoi: ee.Geometry) -> ee.Image:
+    """Water on `day` that was not water on the before date and is not permanent water."""
+    before = optical_water(cfg.L8_BEFORE, aoi)
+    return optical_water(day, aoi).And(before.Not()).And(permanent_water().Not())
+
+
+def sentinel1_vh_median(window: tuple[str, str], aoi: ee.Geometry) -> ee.Image:
+    """Median VH backscatter (dB) of the cfg.S1_ORBIT images in `window`, speckle-filtered.
+
+    For a single day (`one_day(...)`) the median just joins that day's frames.
+    Speckle filter as in the UN-SPIDER recommended practice: mean over a 50 m circle.
+    """
+    images = find_images(cfg.Sensor.S1, get_aoi(), window)
+    images = images.filter(ee.Filter.eq("relativeOrbitNumber_start", cfg.S1_ORBIT)).select("VH")
+    return images.median().clip(aoi).focal_mean(50, "circle", "meters")
+
+
+def sar_flood(during: ee.Image, before: ee.Image) -> ee.Image:
+    """1 where the VH backscatter got darker by SAR_RATIO_THRESHOLD, without permanent water and slopes.
+
+    The dB values are negative, so during / before > 1 means darker (UN-SPIDER recommended practice).
+    """
+    ratio = during.divide(before)
+    slope = ee.Terrain.slope(ee.Image(cfg.DEM))
+    flood = ratio.gt(cfg.SAR_RATIO_THRESHOLD)
+    return flood.And(permanent_water().Not()).And(slope.lt(cfg.MAX_SLOPE_DEG))
+
+
 def permanent_water() -> ee.Image:
-    """1 where JRC Global Surface Water saw water at least PERMANENT_WATER_OCCURRENCE % of the time."""
-    occurrence = ee.Image(JRC_GSW).select("occurrence").unmask(0)
-    return occurrence.gte(PERMANENT_WATER_OCCURRENCE)
+    """1 where JRC Global Surface Water saw water at least cfg.PERMANENT_WATER_OCCURRENCE % of the time."""
+    occurrence = ee.Image(cfg.JRC_GSW).select("occurrence").unmask(0)
+    return occurrence.gte(cfg.PERMANENT_WATER_OCCURRENCE)
 
 
 def geometry_km2(geometry: ee.Geometry) -> float:
@@ -205,6 +190,17 @@ def area_km2(mask: ee.Image, aoi: ee.Geometry, scale: int = 30) -> float:
     if result is None:
         raise RuntimeError("Earth Engine returned no result.")
     return result["area"]
+
+
+def area_per_class(mask: ee.Image, classes: ee.Image, aoi: ee.Geometry, scale: int = 10) -> dict[int, float]:
+    """Area in km² of the pixels where `mask` is 1, split by the class values in `classes`."""
+    # Band 0 = pixel area, band 1 = class. The grouped reducer sums band 0 per value of band 1.
+    image = ee.Image.pixelArea().divide(1e6).updateMask(mask).addBands(classes)
+    reducer = ee.Reducer.sum().group(groupField=1, groupName="class")
+    result = image.reduceRegion(reducer, aoi, scale, maxPixels=int(1e10)).getInfo()
+    if result is None:
+        raise RuntimeError("Earth Engine returned no result.")
+    return {group["class"]: group["sum"] for group in result["groups"]}
 
 
 def histogram(image: ee.Image, aoi: ee.Geometry, scale: int = 30) -> tuple[np.ndarray, np.ndarray]:
@@ -235,6 +231,47 @@ def otsu(values: np.ndarray, counts: np.ndarray) -> float:
         if score > best_score:
             best_score, best_threshold = score, float(values[i])
     return best_threshold
+
+
+# --- Static maps for the report ---------------------------------------------
+def outline(geometry: ee.Geometry, color: str = "red", width: int = 2) -> ee.Image:
+    """The border of `geometry` as an RGB image, to put on top of other layers."""
+    border = ee.Image().byte().paint(ee.FeatureCollection(geometry), 1, width)
+    return border.visualize(palette=[color])
+
+
+def download_rgb(image: ee.Image, region: ee.Geometry, width: int = 1000) -> tuple[np.ndarray, tuple[float, float, float, float]]:
+    """Download a visualised (RGB) image as an array, plus its extent (west, east, south, north).
+
+    `image` must already be RGB, e.g. made with image.visualize(...).
+    """
+    box = region.bounds(maxError=1)
+    corners = box.coordinates().getInfo()
+    if corners is None:
+        raise RuntimeError("Earth Engine returned no result.")
+    lons = [lon for lon, lat in corners[0]]
+    lats = [lat for lon, lat in corners[0]]
+    url = image.getThumbURL({"region": box, "dimensions": width, "format": "png", "crs": "EPSG:4326"})
+    with urllib.request.urlopen(url) as response:
+        array = matplotlib.image.imread(io.BytesIO(response.read()), format="png")
+    return array, (min(lons), max(lons), min(lats), max(lats))
+
+
+def plot_map(ax: Axes, image: ee.Image, region: ee.Geometry, title: str, width: int = 1000) -> None:
+    """Draw a visualised Earth Engine image on a matplotlib axis with lon/lat axes."""
+    array, extent = download_rgb(image, region, width)
+    ax.imshow(array, extent=extent)
+    # One degree of longitude is shorter than one of latitude: correct the aspect ratio.
+    mid_lat = (extent[2] + extent[3]) / 2
+    ax.set_aspect(1 / math.cos(math.radians(mid_lat)))
+    ax.set_title(title, fontsize=10)
+    ax.set_xlabel("Longitude (°)")
+    ax.set_ylabel("Latitude (°)")
+
+
+def legend_patches(colors: dict[str, str]) -> list[Patch]:
+    """Legend entries (coloured squares) from {label: colour}."""
+    return [Patch(facecolor=color, edgecolor="grey", label=label) for label, color in colors.items()]
 
 
 def Map(center: tuple[float, float] = (47.9, -97.0), zoom: int = 7, **kwargs: Any) -> geemap.Map:

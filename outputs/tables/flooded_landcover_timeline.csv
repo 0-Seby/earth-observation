@@ -1,0 +1,29 @@
+date,class,flooded_km2,class_flooded_%
+2019-04-22,Tree cover,1.0,0.8
+2019-04-22,Grassland,64.4,12.4
+2019-04-22,Cropland,537.1,15.3
+2019-04-22,Built-up,2.7,7.2
+2019-04-22,Bare / sparse vegetation,2.0,8.4
+2019-04-22,Permanent water bodies,6.1,17.0
+2019-04-22,Herbaceous wetland,1.5,20.8
+2019-05-04,Tree cover,0.6,0.5
+2019-05-04,Grassland,46.4,9.0
+2019-05-04,Cropland,472.1,13.5
+2019-05-04,Built-up,0.8,2.1
+2019-05-04,Bare / sparse vegetation,1.2,4.9
+2019-05-04,Permanent water bodies,5.0,13.9
+2019-05-04,Herbaceous wetland,0.8,11.4
+2019-05-16,Tree cover,0.1,0.1
+2019-05-16,Grassland,8.9,1.7
+2019-05-16,Cropland,294.1,8.4
+2019-05-16,Built-up,0.4,1.1
+2019-05-16,Bare / sparse vegetation,0.7,2.8
+2019-05-16,Permanent water bodies,1.4,4.0
+2019-05-16,Herbaceous wetland,0.2,2.6
+2019-08-20,Tree cover,0.1,0.1
+2019-08-20,Grassland,9.8,1.9
+2019-08-20,Cropland,15.4,0.4
+2019-08-20,Built-up,0.1,0.2
+2019-08-20,Bare / sparse vegetation,0.3,1.2
+2019-08-20,Permanent water bodies,0.0,0.0
+2019-08-20,Herbaceous wetland,0.4,5.9

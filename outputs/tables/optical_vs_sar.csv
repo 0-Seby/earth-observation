@@ -1,0 +1,6 @@
+layer,area_km2
+optical flood (MNDWI),742.3
+SAR flood (Sentinel-1),566.8
+both,523.7
+optical only,218.7
+SAR only,39.5

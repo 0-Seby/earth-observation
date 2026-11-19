@@ -1,0 +1,8 @@
+class,area_km2,flooded_km2,share_of_flood_%,class_flooded_%
+Cropland,3505.5,624.2,84.1,17.8
+Grassland,517.6,86.0,11.6,16.6
+Tree cover,123.4,16.3,2.2,13.2
+Permanent water bodies,35.7,11.0,1.5,31.0
+Bare / sparse vegetation,23.7,1.8,0.2,7.4
+Herbaceous wetland,7.2,1.4,0.2,20.1
+Built-up,37.2,1.2,0.2,3.3
